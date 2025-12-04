@@ -372,7 +372,7 @@ def is_quality_chunk(chunk):
     return True
 
 
-def index_paper_to_pinecone(pmcid, text, drug_name):
+def index_paper_to_pinecone(pmcid, text, drug_name, namespace):
     """Chunk and index paper text to Pinecone using batch embeddings."""
     text_splitter = RecursiveCharacterTextSplitter(
         chunk_size=1000, 
@@ -392,9 +392,6 @@ def index_paper_to_pinecone(pmcid, text, drug_name):
         return 0
     
     print(f"[INFO] PMC{pmcid}: {len(quality_chunks)}/{len(chunks)} quality chunks")
-    
-    # Get session namespace for isolation
-    namespace = st.session_state.session_namespace
     
     # Batch embed all chunks at once (much faster than one-by-one)
     batch_size = 100
@@ -426,7 +423,7 @@ def index_paper_to_pinecone(pmcid, text, drug_name):
     return total_indexed
 
 
-def index_paper_parallel(paper_info, drug_name):
+def index_paper_parallel(paper_info, drug_name, namespace):
     """Index a single paper - designed to run in parallel."""
     pmcid = paper_info['pmcid']
     text = paper_info.get('text', '')
@@ -435,14 +432,16 @@ def index_paper_parallel(paper_info, drug_name):
         return pmcid, 0, False
     
     try:
-        chunks = index_paper_to_pinecone(pmcid, text, drug_name)
+        chunks = index_paper_to_pinecone(pmcid, text, drug_name, namespace)
         return pmcid, chunks, True
     except Exception as e:
         print(f"[ERROR] Failed to index PMC{pmcid}: {e}")
+        import traceback
+        traceback.print_exc()
         return pmcid, 0, False
 
 
-def index_papers_parallel(papers_to_index, drug_name, progress_callback=None):
+def index_papers_parallel(papers_to_index, drug_name, namespace, progress_callback=None):
     """Index multiple papers in parallel using ThreadPoolExecutor."""
     results = {}
     total_chunks = 0
@@ -451,9 +450,9 @@ def index_papers_parallel(papers_to_index, drug_name, progress_callback=None):
     max_workers = min(4, len(papers_to_index))  # Limit to avoid rate limiting
     
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
-        # Submit all indexing tasks
+        # Submit all indexing tasks with namespace
         future_to_paper = {
-            executor.submit(index_paper_parallel, paper, drug_name): paper 
+            executor.submit(index_paper_parallel, paper, drug_name, namespace): paper 
             for paper in papers_to_index
         }
         
@@ -799,8 +798,9 @@ if st.button("🔍 Search & Index"):
                         progress_bar.progress(progress)
                         status_text.text(f"Indexed PMC{pmcid} ({chunks} chunks) - {completed}/{total} papers")
                     
+                    # Pass namespace explicitly
                     results, total_chunks = index_papers_parallel(
-                        papers_to_index, drug_name, update_progress
+                        papers_to_index, drug_name, st.session_state.session_namespace, update_progress
                     )
                     
                     # Update paper info with indexing results
