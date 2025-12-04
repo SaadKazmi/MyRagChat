@@ -1,0 +1,10 @@
+streamlit
+streamlit-pdf
+pymupdf
+langchain-openai
+langchain-text-splitters
+langchain-pinecone
+pinecone-client
+google-generativeai
+pandas
+requests
