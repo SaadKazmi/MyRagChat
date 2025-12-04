@@ -4,7 +4,7 @@ pymupdf
 langchain-openai
 langchain-text-splitters
 langchain-pinecone
-pinecone-client
+pinecone
 google-generativeai
 pandas
 requests
