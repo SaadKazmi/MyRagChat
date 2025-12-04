@@ -18,6 +18,7 @@ import tempfile
 import pandas as pd
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import re
+import uuid  # Add this import
 
 # ---- Config ----
 OPENAI_API_KEY = st.secrets["OPENAI_API_KEY"]
@@ -46,6 +47,9 @@ if "total_chunks_indexed" not in st.session_state:
     st.session_state.total_chunks_indexed = 0
 if "chat_initialized" not in st.session_state:
     st.session_state.chat_initialized = False
+if "session_namespace" not in st.session_state:
+    # Create a unique namespace for this session to isolate vectors
+    st.session_state.session_namespace = f"session_{uuid.uuid4().hex[:12]}"
 
 # ----------------------------
 # PDF VALIDATION & DOWNLOAD FUNCTIONS
@@ -389,6 +393,9 @@ def index_paper_to_pinecone(pmcid, text, drug_name):
     
     print(f"[INFO] PMC{pmcid}: {len(quality_chunks)}/{len(chunks)} quality chunks")
     
+    # Get session namespace for isolation
+    namespace = st.session_state.session_namespace
+    
     # Batch embed all chunks at once (much faster than one-by-one)
     batch_size = 100
     total_indexed = 0
@@ -404,17 +411,18 @@ def index_paper_to_pinecone(pmcid, text, drug_name):
         upsert_data = []
         for (orig_idx, chunk), vector in zip(batch, vectors):
             metadata = {
-                "pmcid": pmcid,
+                "pmcid": str(pmcid),  # Ensure string type
                 "drug_name": drug_name,
                 "chunk_index": orig_idx,
                 "text": chunk
             }
             upsert_data.append((f"{pmcid}_{orig_idx}", vector, metadata))
         
-        # Batch upsert to Pinecone
-        index.upsert(vectors=upsert_data)
+        # Batch upsert to Pinecone with namespace
+        index.upsert(vectors=upsert_data, namespace=namespace)
         total_indexed += len(batch)
     
+    print(f"[INFO] Indexed {total_indexed} chunks to namespace: {namespace}")
     return total_indexed
 
 
@@ -468,22 +476,21 @@ def index_papers_parallel(papers_to_index, drug_name, progress_callback=None):
 def delete_paper_from_pinecone(pmcid):
     """Delete all chunks for a paper from Pinecone."""
     try:
-        # Query to find all vectors with this pmcid
+        namespace = st.session_state.session_namespace
+        
         # Delete by prefix (pmcid_0, pmcid_1, etc.)
-        # First, we need to find how many chunks exist
-        # We'll delete in batches using the ID pattern
         deleted_count = 0
         batch_size = 100
         
         for i in range(0, 1000, batch_size):  # Assume max 1000 chunks per paper
             ids_to_delete = [f"{pmcid}_{j}" for j in range(i, i + batch_size)]
             try:
-                index.delete(ids=ids_to_delete)
+                index.delete(ids=ids_to_delete, namespace=namespace)
                 deleted_count += batch_size
             except Exception:
                 break
         
-        print(f"[INFO] Deleted chunks for PMC{pmcid}")
+        print(f"[INFO] Deleted chunks for PMC{pmcid} from namespace: {namespace}")
         return True
     except Exception as e:
         print(f"[ERROR] Failed to delete chunks for PMC{pmcid}: {e}")
@@ -492,13 +499,23 @@ def delete_paper_from_pinecone(pmcid):
 
 def cleanup_all_indexed_papers():
     """Remove all indexed paper chunks from Pinecone."""
+    namespace = st.session_state.session_namespace
+    
+    try:
+        # Delete the entire namespace - most efficient cleanup
+        index.delete(delete_all=True, namespace=namespace)
+        print(f"[INFO] Deleted all vectors in namespace: {namespace}")
+    except Exception as e:
+        print(f"[ERROR] Failed to delete namespace: {e}")
+    
+    # Reset indexed status
     cleaned_pmcids = []
     for drug, papers in st.session_state.retrieved_papers.items():
         for paper in papers:
             if paper.get('indexed', False):
-                if delete_paper_from_pinecone(paper['pmcid']):
-                    paper['indexed'] = False
-                    cleaned_pmcids.append(paper['pmcid'])
+                paper['indexed'] = False
+                cleaned_pmcids.append(paper['pmcid'])
+    
     return cleaned_pmcids
 
 
@@ -507,23 +524,18 @@ def get_context_from_selected_papers(query, selected_pmcids):
     try:
         # Ensure PMCIDs are strings for consistent filtering
         selected_pmcids_str = [str(pmcid) for pmcid in selected_pmcids]
+        namespace = st.session_state.session_namespace
         
-        vector_store = PineconeVectorStore(
-            index=index,
-            embedding=embeddings,
-            namespace="",
-            text_key="text"
-        )
+        print(f"[INFO] Querying namespace: {namespace} for PMCIDs: {selected_pmcids_str}")
         
-        # Query without filter first, then filter manually
-        # This is more reliable than relying on Pinecone's $in filter
+        # Query Pinecone directly with namespace and filter
         query_vector = embeddings.embed_query(query)
         
-        # Query Pinecone directly with filter
         results = index.query(
             vector=query_vector,
             top_k=50,  # Get more results to filter from
             include_metadata=True,
+            namespace=namespace,  # Use session namespace
             filter={"pmcid": {"$in": selected_pmcids_str}}
         )
         
@@ -543,8 +555,10 @@ def get_context_from_selected_papers(query, selected_pmcids):
                         'score': match.get('score', 0)
                     })
         
+        print(f"[INFO] Found {len(context_chunks)} matching chunks from namespace {namespace}")
+        
         if not context_chunks:
-            print(f"[WARN] No matching chunks found for PMCIDs: {selected_pmcids_str}")
+            print(f"[WARN] No matching chunks found for PMCIDs: {selected_pmcids_str} in namespace: {namespace}")
             # Fallback to full text from session state
             context_text = ""
             for pmcid in selected_pmcids:
@@ -1041,11 +1055,17 @@ with st.sidebar:
     st.metric("Chat Messages", len(st.session_state.chat_history))
     st.metric("Chat Active", "Yes" if st.session_state.chat_initialized else "No")
     
+    # Show session namespace for debugging
+    st.caption(f"Session: {st.session_state.session_namespace[:8]}...")
+    
     st.divider()
     
     if st.button("🔄 Reset All"):
         # Cleanup Pinecone first
         cleanup_all_indexed_papers()
+        
+        # Generate new session namespace
+        st.session_state.session_namespace = f"session_{uuid.uuid4().hex[:12]}"
         
         st.session_state.retrieved_papers = {}
         st.session_state.selected_papers = []
