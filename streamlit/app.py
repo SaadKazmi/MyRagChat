@@ -681,8 +681,9 @@ def generate_initial_summary_streaming(selected_pmcids, placeholder):
     # Get context from vector database (same as regular chat)
     context_text = get_context_from_selected_papers(precomputed_query, selected_pmcids)
     
-    # Get paper titles for reference
+    # Get paper titles and drug names for reference
     paper_titles = []
+    searched_drugs = list(st.session_state.retrieved_papers.keys())
     for drug, papers in st.session_state.retrieved_papers.items():
         for paper in papers:
             if paper['pmcid'] in selected_pmcids:
@@ -690,6 +691,9 @@ def generate_initial_summary_streaming(selected_pmcids, placeholder):
     
     # Same prompt structure as regular chat
     prompt = f"""You are a research assistant analyzing drug repurposing papers.
+
+The user searched for papers about: {', '.join(searched_drugs)}
+Focus your analysis on how "{searched_drugs[0] if searched_drugs else 'the drug'}" specifically is being repurposed or studied for new therapeutic uses.
 
 You are discussing the following papers (PMCIDs: {', '.join([f'PMC{p}' for p in selected_pmcids])}).
 Paper titles:
@@ -700,7 +704,7 @@ Context from selected research papers:
 
 Question: {precomputed_query}
 
-Please provide a detailed, scientific answer based ONLY on the research papers provided. Cite specific findings when relevant and mention which paper (by PMCID) the information comes from."""
+Please provide a detailed, scientific answer based ONLY on the research papers provided. Focus specifically on how {searched_drugs[0] if searched_drugs else 'the drug'} is being repurposed. If the paper discusses {searched_drugs[0] if searched_drugs else 'the drug'} in relation to other drugs or conditions, clarify that relationship. Cite specific findings when relevant and mention which paper (by PMCID) the information comes from."""
 
     # Stream the response
     full_response = ""
@@ -1017,8 +1021,14 @@ if st.session_state.selected_papers:
             selected_pmcids = st.session_state.selected_papers
             context_text = get_context_from_selected_papers(user_question, selected_pmcids)
             
+            # Get the searched drug names
+            searched_drugs = list(st.session_state.retrieved_papers.keys())
+            
             # Prepare prompt
             prompt = f"""You are a research assistant analyzing drug repurposing papers.
+
+The user searched for papers about: {', '.join(searched_drugs)}
+Focus your analysis on "{searched_drugs[0] if searched_drugs else 'the drug'}" specifically.
 
 You are discussing the following papers (PMCIDs: {', '.join([f'PMC{p}' for p in selected_pmcids])}).
 
@@ -1027,7 +1037,7 @@ Context from selected research papers:
 
 Question: {user_question}
 
-Please provide a detailed, scientific answer based ONLY on the research papers provided. Cite specific findings when relevant and mention which paper (by PMCID) the information comes from."""
+Please provide a detailed, scientific answer based ONLY on the research papers provided. When discussing drug repurposing, focus specifically on how {searched_drugs[0] if searched_drugs else 'the drug'} is being repurposed (not other drugs mentioned in the paper). If the paper is about {searched_drugs[0] if searched_drugs else 'the drug'}'s mechanism or role in a disease context rather than its direct repurposing, clarify that distinction. Cite specific findings when relevant and mention which paper (by PMCID) the information comes from."""
 
             # Call Gemini with streaming display
             with st.chat_message("assistant", avatar="🤖"):
