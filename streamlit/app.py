@@ -121,7 +121,7 @@ def get_pdf_link_from_pmcid(pmcid):
     """Get PDF link from PMC Open Access API."""
     api_url = f"https://www.ncbi.nlm.nih.gov/pmc/utils/oa/oa.fcgi?id=PMC{pmcid}"
     try:
-        r = requests.get(api_url, timeout=10)
+        r = requests.get(api_url, timeout=15)
         root = ET.fromstring(r.text)
         for link in root.findall(".//link"):
             if link.attrib.get("format") == "pdf":
@@ -131,7 +131,7 @@ def get_pdf_link_from_pmcid(pmcid):
     return None
 
 
-def download_stream(url, destination, timeout=20):
+def download_stream(url, destination, timeout=30):
     """Reliable binary download for HTTP and FTP."""
     if url.startswith("ftp://"):
         with urllib.request.urlopen(url, timeout=timeout) as response, open(destination, "wb") as out:
@@ -579,7 +579,7 @@ def get_context_from_selected_papers(query, selected_pmcids):
                 break
             top_chunks.append(chunk)
         
-        # Re-sort by score for coherent context
+        # Re-sort to ensure top chunks are at the beginning
         top_chunks.sort(key=lambda x: x['score'], reverse=True)
         
         # Debug: show distribution
@@ -646,6 +646,58 @@ Please provide a detailed, scientific answer based ONLY on the research papers p
         return response.text
     except Exception as e:
         return f"Error generating summary: {e}"
+
+
+def stream_gemini_response(prompt):
+    """Stream response from Gemini model."""
+    try:
+        model = genai.GenerativeModel("gemini-2.0-flash")
+        response = model.generate_content(prompt, stream=True)
+        for chunk in response:
+            if chunk.text:
+                yield chunk.text
+    except Exception as e:
+        yield f"Error: {e}"
+
+
+def generate_initial_summary_streaming(selected_pmcids, placeholder):
+    """Generate an automatic summary of selected papers with streaming output."""
+    # Precomputed query - treated just like a user question
+    precomputed_query = "Give me a comprehensive summary of the research paper(s). Include the title, main objectives, key findings, methodologies used, and conclusions."
+    
+    # Get context from vector database (same as regular chat)
+    context_text = get_context_from_selected_papers(precomputed_query, selected_pmcids)
+    
+    # Get paper titles for reference
+    paper_titles = []
+    for drug, papers in st.session_state.retrieved_papers.items():
+        for paper in papers:
+            if paper['pmcid'] in selected_pmcids:
+                paper_titles.append(f"PMC{paper['pmcid']}: {paper['title']}")
+    
+    # Same prompt structure as regular chat
+    prompt = f"""You are a research assistant analyzing drug repurposing papers.
+
+You are discussing the following papers (PMCIDs: {', '.join([f'PMC{p}' for p in selected_pmcids])}).
+Paper titles:
+{chr(10).join(paper_titles)}
+
+Context from selected research papers:
+{context_text}
+
+Question: {precomputed_query}
+
+Please provide a detailed, scientific answer based ONLY on the research papers provided. Cite specific findings when relevant and mention which paper (by PMCID) the information comes from."""
+
+    # Stream the response
+    full_response = ""
+    for chunk in stream_gemini_response(prompt):
+        full_response += chunk
+        placeholder.markdown(f"**📋 Summary of Selected Papers**\n\n{full_response}▌")
+    
+    # Final update without cursor
+    placeholder.markdown(f"**📋 Summary of Selected Papers**\n\n{full_response}")
+    return full_response
 
 
 # ----------------------------
@@ -885,16 +937,18 @@ if st.session_state.selected_papers:
     # Start Chat button - triggers initial summary
     if not st.session_state.chat_initialized:
         if st.button("🚀 Start Chat (Generate Summary)", type="primary"):
-            with st.spinner("Analyzing selected papers and generating summary..."):
-                summary = generate_initial_summary(st.session_state.selected_papers)
-                
-                # Add to chat history
-                st.session_state.chat_history.append({
-                    "role": "assistant", 
-                    "content": f"**📋 Summary of Selected Papers**\n\n{summary}"
-                })
-                st.session_state.chat_initialized = True
-                st.rerun()
+            with st.chat_message("assistant", avatar="🤖"):
+                placeholder = st.empty()
+                placeholder.markdown("**📋 Summary of Selected Papers**\n\n_Analyzing selected papers..._")
+                summary = generate_initial_summary_streaming(st.session_state.selected_papers, placeholder)
+            
+            # Add to chat history
+            st.session_state.chat_history.append({
+                "role": "assistant", 
+                "content": f"**📋 Summary of Selected Papers**\n\n{summary}"
+            })
+            st.session_state.chat_initialized = True
+            st.rerun()
     
     # Display chat history with improved UI
     if st.session_state.chat_history:
@@ -963,13 +1017,14 @@ Please provide a detailed, scientific answer based ONLY on the research papers p
 
             # Call Gemini with streaming display
             with st.chat_message("assistant", avatar="🤖"):
-                with st.spinner("Thinking..."):
-                    try:
-                        response = genai.GenerativeModel("gemini-2.0-flash").generate_content(prompt)
-                        answer = response.text
-                    except Exception as e:
-                        answer = f"Error: {e}"
-                st.markdown(answer)
+                placeholder = st.empty()
+                full_response = ""
+                for chunk in stream_gemini_response(prompt):
+                    full_response += chunk
+                    placeholder.markdown(full_response + "▌")
+                # Final update without cursor
+                placeholder.markdown(full_response)
+                answer = full_response
             
             # Update chat history
             st.session_state.chat_history.append({"role": "user", "content": user_question})
