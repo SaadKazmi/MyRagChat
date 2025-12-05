@@ -1266,7 +1266,7 @@ Context from selected research papers:
 
 Question: {user_question}
 
-Please provide a detailed, scientific answer based ONLY on the research papers provided. When discussing drug repurposing, focus specifically on how {searched_drugs[0] if searched_drugs else 'the drug'} is being repurposed (not other drugs mentioned in the paper). If the paper is about {searched_drugs[0] if searched_drugs else 'the drug'}'s mechanism or role in a disease context rather than its direct repurposing, clarify that distinction. Cite specific findings when relevant and mention which paper (by PMCID) the information comes from."""
+Please provide a detailed, scientific answer based on the research papers provided. When discussing drug repurposing, focus specifically on how {searched_drugs[0] if searched_drugs else 'the drug'} is being repurposed (not other drugs mentioned in the paper). If the paper is about {searched_drugs[0] if searched_drugs else 'the drug'}'s mechanism or role in a disease context rather than its direct repurposing, clarify that distinction. Cite specific findings when relevant and mention which paper (by PMCID) the information comes from. If a general question relaed to the research is asked, answer based ONLY on the provided context."""
 
             with st.chat_message("assistant", avatar="🤖"):
                 placeholder = st.empty()
