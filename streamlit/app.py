@@ -652,7 +652,7 @@ Context from selected research papers:
 
 Question: {precomputed_query}
 
-Please provide a detailed, scientific answer based ONLY on the research papers provided. Cite specific findings when relevant and mention which paper (by PMCID) the information comes from."""
+Please provide a detailed, scientific answer based on the research papers provided. When relevant, highlight findings related to {searched_drugs[0] if searched_drugs else 'the drug'}. Cite specific findings and mention which paper (by PMCID) the information comes from."""
 
     try:
         response = genai.GenerativeModel("gemini-2.5-flash").generate_content(prompt)
@@ -720,27 +720,176 @@ Please provide a detailed, scientific answer based ONLY on the research papers p
 # ----------------------------
 # STREAMLIT UI
 # ----------------------------
-st.title("🔬 Drug Research Paper Chat")
-st.markdown("Search for drug repurposing papers, select papers, and chat with AI about them.")
+
+# Custom CSS for better styling
+st.markdown("""
+<style>
+    .main-header {
+        background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+        padding: 20px;
+        border-radius: 10px;
+        margin-bottom: 20px;
+    }
+    .section-header {
+        background-color: #f0f2f6;
+        padding: 15px;
+        border-radius: 8px;
+        border-left: 4px solid #667eea;
+        margin: 20px 0 15px 0;
+    }
+    .info-box {
+        background-color: #e8f4f8;
+        padding: 15px;
+        border-radius: 8px;
+        border: 1px solid #b8daff;
+        margin: 10px 0;
+    }
+    .success-box {
+        background-color: #d4edda;
+        padding: 15px;
+        border-radius: 8px;
+        border: 1px solid #c3e6cb;
+    }
+    .warning-box {
+        background-color: #fff3cd;
+        padding: 15px;
+        border-radius: 8px;
+        border: 1px solid #ffeeba;
+    }
+    .metric-card {
+        background: white;
+        padding: 15px;
+        border-radius: 8px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        text-align: center;
+    }
+    .step-indicator {
+        display: inline-block;
+        width: 30px;
+        height: 30px;
+        background: #667eea;
+        color: white;
+        border-radius: 50%;
+        text-align: center;
+        line-height: 30px;
+        margin-right: 10px;
+        font-weight: bold;
+    }
+</style>
+""", unsafe_allow_html=True)
+
+# ---- App Header ----
+st.markdown("# 🔬 Drug Research Paper Chat")
+st.markdown("""
+<div style='background: linear-gradient(90deg, #667eea 0%, #764ba2 100%); padding: 20px; border-radius: 10px; color: white; margin-bottom: 20px;'>
+    <h3 style='margin: 0; color: white;'>AI-Powered Drug Repurposing Research Assistant</h3>
+    <p style='margin: 10px 0 0 0; opacity: 0.9;'>
+        Search PubMed Central for drug repurposing papers, automatically download and index them, 
+        then have intelligent conversations with AI about the research findings.
+    </p>
+</div>
+""", unsafe_allow_html=True)
+
+# Pipeline overview
+with st.expander("ℹ️ **How This App Works** - Click to expand", expanded=False):
+    st.markdown("""
+    ### 📋 Pipeline Overview
+    
+    This application follows a 3-step workflow:
+    
+    | Step | Action | What Happens |
+    |------|--------|--------------|
+    | **1️⃣** | **Search & Index** | Search PubMed Central for papers, download PDFs, extract text, and create searchable vector embeddings |
+    | **2️⃣** | **Select Papers** | Choose which papers you want to include in your chat context |
+    | **3️⃣** | **Chat & Explore** | Ask questions and get AI-powered answers based on the selected papers |
+    
+    ### 🔧 Technology Stack
+    - **PDF Processing**: PyMuPDF for text extraction
+    - **Vector Database**: Pinecone for semantic search
+    - **Embeddings**: OpenAI text-embedding-ada-002
+    - **AI Model**: Google Gemini 2.5 Flash for responses
+    - **Data Source**: PubMed Central Open Access
+    """)
+
+st.divider()
 
 # ---- Step 1: Drug Search & Auto-Index ----
-st.header("1️⃣ Search & Index Research Papers")
+st.markdown("""
+<div style='background-color: #f0f2f6; padding: 15px; border-radius: 8px; border-left: 4px solid #667eea; margin-bottom: 15px;'>
+    <h2 style='margin: 0;'><span style='background: #667eea; color: white; padding: 5px 12px; border-radius: 50%; margin-right: 10px;'>1</span> Search & Index Research Papers</h2>
+</div>
+""", unsafe_allow_html=True)
+
+st.markdown("""
+🔍 **What this step does:**
+- Searches PubMed Central for drug repurposing research papers
+- Downloads available open-access PDFs
+- Extracts and cleans text content from PDFs
+- Creates vector embeddings and indexes them for semantic search
+
+> 💡 **Tip**: Start with a specific drug name (e.g., "metformin", "aspirin") for best results.
+""")
 
 col1, col2, col3 = st.columns([3, 1, 1])
 with col1:
-    drug_name = st.text_input("Enter Drug Name:", placeholder="e.g., apomorphine, metformin")
+    drug_name = st.text_input(
+        "🔬 Enter Drug Name:",
+        placeholder="e.g., apomorphine, metformin, aspirin",
+        help="Enter the name of a drug to search for repurposing research papers"
+    )
 with col2:
-    max_search = st.number_input("Search Pool:", min_value=10, max_value=200, value=100, help="Number of articles to search through")
+    max_search = st.number_input(
+        "📊 Search Pool:",
+        min_value=10,
+        max_value=200,
+        value=100,
+        help="Number of articles to search through from PubMed Central. Higher numbers may find more open-access PDFs but take longer."
+    )
 with col3:
-    max_pdfs = st.number_input("Max PDFs:", min_value=1, max_value=5, value=1, help="Number of PDFs to download and index")
+    max_pdfs = st.number_input(
+        "📄 Max PDFs:",
+        min_value=1,
+        max_value=5,
+        value=1,
+        help="Maximum number of PDFs to download and index. More papers = richer context but longer processing time."
+    )
 
-if st.button("🔍 Search & Index"):
+# Search button with better styling
+search_col1, search_col2 = st.columns([1, 3])
+with search_col1:
+    search_button = st.button("🚀 Search & Index", type="primary", use_container_width=True)
+
+if search_button:
     if drug_name:
-        with st.spinner(f"Searching PMC for '{drug_name} repurposing'..."):
+        # Progress container
+        progress_container = st.container()
+        
+        with progress_container:
+            st.markdown("---")
+            st.markdown("### 🔄 Processing Pipeline")
+            
+            # Phase indicators
+            phase_cols = st.columns(3)
+            with phase_cols[0]:
+                search_status = st.empty()
+                search_status.info("🔍 **Phase 1: Searching...**")
+            with phase_cols[1]:
+                download_status = st.empty()
+                download_status.markdown("⏳ Phase 2: Download")
+            with phase_cols[2]:
+                index_status = st.empty()
+                index_status.markdown("⏳ Phase 3: Indexing")
+            
+            st.markdown("---")
+            
             query = f"{drug_name} repurposing"
             pmc_ids = search_pmc_articles(query, max_results=max_search)
             
+            search_status.success(f"✅ **Found {len(pmc_ids)} articles**")
+            
             if pmc_ids:
+                download_status.info("📥 **Phase 2: Downloading...**")
+                
                 papers = []
                 progress_bar = st.progress(0)
                 status_text = st.empty()
@@ -752,14 +901,12 @@ if st.button("🔍 Search & Index"):
                 papers_to_index = []
                 
                 # Phase 1: Download PDFs and extract text
-                status_text.text("Phase 1: Downloading PDFs...")
                 for idx, pmcid in enumerate(pmc_ids):
                     if download_count >= max_pdfs:
-                        status_text.text(f"Reached {max_pdfs} PDFs. Moving to indexing...")
                         break
                     
-                    status_text.text(f"Downloading PMC{pmcid}... ({idx+1}/{len(pmc_ids)}) - Got: {download_count}/{max_pdfs}")
-                    progress_bar.progress((idx + 1) / len(pmc_ids) * 0.5)  # First 50% for downloads
+                    status_text.text(f"📥 Checking PMC{pmcid}... ({idx+1}/{len(pmc_ids)}) | Downloaded: {download_count}/{max_pdfs}")
+                    progress_bar.progress((idx + 1) / len(pmc_ids) * 0.5)
                     
                     pdf_url = get_pdf_link_from_pmcid(pmcid)
                     if not pdf_url:
@@ -793,87 +940,135 @@ if st.button("🔍 Search & Index"):
                     
                     time.sleep(0.3)
                 
+                download_status.success(f"✅ **Downloaded {download_count} PDFs**")
+                
                 # Phase 2: Parallel indexing
+                total_chunks = 0
                 if papers_to_index:
-                    status_text.text(f"Phase 2: Indexing {len(papers_to_index)} papers in parallel...")
+                    index_status.info("🔢 **Phase 3: Indexing...**")
+                    status_text.text(f"🔢 Creating vector embeddings for {len(papers_to_index)} papers...")
                     
                     def update_progress(completed, total, pmcid, chunks):
-                        progress = 0.5 + (completed / total * 0.5)  # Second 50% for indexing
+                        progress = 0.5 + (completed / total * 0.5)
                         progress_bar.progress(progress)
-                        status_text.text(f"Indexed PMC{pmcid} ({chunks} chunks) - {completed}/{total} papers")
+                        status_text.text(f"🔢 Indexed PMC{pmcid} ({chunks} chunks) - {completed}/{total} papers")
                     
-                    # Pass namespace explicitly
                     results, total_chunks = index_papers_parallel(
                         papers_to_index, drug_name, st.session_state.session_namespace, update_progress
                     )
                     
-                    # Update paper info with indexing results
                     for paper in papers:
                         if paper['pmcid'] in results:
                             paper['indexed'] = results[paper['pmcid']]['success']
                             paper['chunks'] = results[paper['pmcid']]['chunks']
                     
                     st.session_state.total_chunks_indexed += total_chunks
+                    index_status.success(f"✅ **Indexed {total_chunks} chunks**")
                 
                 progress_bar.empty()
                 status_text.empty()
                 
                 st.session_state.retrieved_papers[drug_name] = papers
                 
+                # Results summary
+                st.markdown("---")
                 if download_count == 0:
-                    st.warning(f"No valid PDFs found in {len(pmc_ids)} articles. Try a different drug name.")
+                    st.warning(f"⚠️ No valid open-access PDFs found in {len(pmc_ids)} articles. Try a different drug name or increase the search pool.")
                 else:
-                    st.success(f"✅ Downloaded {download_count} PDFs and indexed {total_chunks} chunks using parallel processing")
+                    st.success(f"""
+                    ### ✅ Processing Complete!
+                    
+                    | Metric | Value |
+                    |--------|-------|
+                    | 📄 PDFs Downloaded | {download_count} |
+                    | 🔢 Text Chunks Created | {total_chunks} |
+                    | ⚡ Processing Mode | Parallel |
+                    
+                    **Next Step:** Select papers below and start chatting!
+                    """)
             else:
-                st.warning("No papers found. Try a different drug name.")
+                st.warning("❌ No papers found. Try a different drug name.")
     else:
-        st.warning("Please enter a drug name.")
+        st.warning("⚠️ Please enter a drug name to search.")
 
 # ---- Step 2: Select Papers for Chat ----
 if st.session_state.retrieved_papers:
-    st.header("2️⃣ Select Papers for Chat")
+    st.divider()
+    
+    st.markdown("""
+    <div style='background-color: #f0f2f6; padding: 15px; border-radius: 8px; border-left: 4px solid #28a745; margin-bottom: 15px;'>
+        <h2 style='margin: 0;'><span style='background: #28a745; color: white; padding: 5px 12px; border-radius: 50%; margin-right: 10px;'>2</span> Select Papers for Chat</h2>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    st.markdown("""
+    📋 **What this step does:**
+    - Review the downloaded and indexed papers
+    - Select which papers to include in your chat context
+    - More papers = broader knowledge base, but may dilute focus
+    
+    > 💡 **Tip**: For focused answers, select 1-2 highly relevant papers. For comprehensive analysis, select all.
+    """)
     
     for drug, papers in st.session_state.retrieved_papers.items():
-        st.subheader(f"📋 Papers for: {drug}")
+        st.markdown(f"### 📚 Papers for: **{drug}**")
         
-        # Create DataFrame for display
+        # Summary metrics
+        metric_cols = st.columns(4)
+        with metric_cols[0]:
+            st.metric("📄 Total Papers", len(papers))
+        with metric_cols[1]:
+            indexed_count = sum(1 for p in papers if p.get('indexed', False))
+            st.metric("✅ Indexed", indexed_count)
+        with metric_cols[2]:
+            total_paper_chunks = sum(p.get('chunks', 0) for p in papers)
+            st.metric("🔢 Total Chunks", total_paper_chunks)
+        with metric_cols[3]:
+            selected_count = sum(1 for p in papers if p['pmcid'] in st.session_state.selected_papers)
+            st.metric("☑️ Selected", selected_count)
+        
+        # Papers table
         df_data = []
         for paper in papers:
+            status_icon = "✅" if paper.get('indexed', False) else "❌"
+            selected_icon = "☑️" if paper['pmcid'] in st.session_state.selected_papers else "⬜"
             df_data.append({
+                "Select": selected_icon,
+                "Status": status_icon,
                 "PMCID": f"PMC{paper['pmcid']}",
-                "Title": paper["title"][:80] + "..." if len(paper["title"]) > 80 else paper["title"],
-                "Chunks": paper.get("chunks", 0),
-                "Selected": "✅" if paper['pmcid'] in st.session_state.selected_papers else "❌"
+                "Title": paper["title"][:70] + "..." if len(paper["title"]) > 70 else paper["title"],
+                "Chunks": paper.get("chunks", 0)
             })
         
         df = pd.DataFrame(df_data)
         st.dataframe(df, use_container_width=True, hide_index=True)
         
-        # Paper selection with checkboxes
-        st.markdown("**Select papers to include in chat context:**")
-        
-        # Select All / Deselect All buttons
-        col_sel1, col_sel2 = st.columns(2)
+        # Selection controls
+        st.markdown("**📌 Quick Selection:**")
+        col_sel1, col_sel2, col_sel3 = st.columns([1, 1, 2])
         with col_sel1:
-            if st.button(f"✅ Select All ({drug})", key=f"select_all_{drug}"):
+            if st.button(f"✅ Select All", key=f"select_all_{drug}", use_container_width=True):
                 for paper in papers:
                     if paper['pmcid'] not in st.session_state.selected_papers:
                         st.session_state.selected_papers.append(paper['pmcid'])
                 st.rerun()
         with col_sel2:
-            if st.button(f"❌ Deselect All ({drug})", key=f"deselect_all_{drug}"):
+            if st.button(f"❌ Clear All", key=f"deselect_all_{drug}", use_container_width=True):
                 for paper in papers:
                     if paper['pmcid'] in st.session_state.selected_papers:
                         st.session_state.selected_papers.remove(paper['pmcid'])
                 st.rerun()
         
+        # Individual paper selection
+        st.markdown("**📝 Individual Selection:**")
         cols = st.columns(2)
         for idx, paper in enumerate(papers):
             col = cols[idx % 2]
             with col:
+                chunks_badge = f"({paper.get('chunks', 0)} chunks)" if paper.get('chunks', 0) > 0 else "(not indexed)"
                 key = f"select_{drug}_{paper['pmcid']}"
                 is_selected = st.checkbox(
-                    f"PMC{paper['pmcid']}: {paper['title'][:50]}...",
+                    f"**PMC{paper['pmcid']}** {chunks_badge}\n{paper['title'][:45]}...",
                     key=key,
                     value=paper['pmcid'] in st.session_state.selected_papers
                 )
@@ -885,82 +1080,105 @@ if st.session_state.retrieved_papers:
 
 # ---- Step 3: View Papers & Chat ----
 if st.session_state.selected_papers:
-    st.header("3️⃣ View Papers & Chat")
+    st.divider()
+    
+    st.markdown("""
+    <div style='background-color: #f0f2f6; padding: 15px; border-radius: 8px; border-left: 4px solid #dc3545; margin-bottom: 15px;'>
+        <h2 style='margin: 0;'><span style='background: #dc3545; color: white; padding: 5px 12px; border-radius: 50%; margin-right: 10px;'>3</span> Chat with Your Papers</h2>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    st.markdown("""
+    💬 **What this step does:**
+    - Uses RAG (Retrieval-Augmented Generation) to find relevant passages
+    - Sends context + your question to Google Gemini AI
+    - Provides cited, paper-specific answers
+    
+    > 💡 **Tip**: Ask specific questions like "What are the mechanisms of action?" or "What diseases was [drug] tested against?"
+    """)
+    
+    # Selected papers summary
+    st.markdown(f"""
+    <div style='background-color: #d4edda; padding: 15px; border-radius: 8px; border: 1px solid #c3e6cb; margin: 10px 0;'>
+        <strong>📚 Chat Context:</strong> {len(st.session_state.selected_papers)} paper(s) selected | 
+        <strong>🔢 Searchable Chunks:</strong> ~{st.session_state.total_chunks_indexed} | 
+        <strong>🤖 AI Model:</strong> Gemini 2.5 Flash
+    </div>
+    """, unsafe_allow_html=True)
     
     # Collapsible paper viewer with PDF display
-    st.subheader("📄 Selected Papers")
-    
-    for pmcid in st.session_state.selected_papers:
-        # Find the paper info to get the PDF path
-        pdf_path = None
-        paper_title = f"PMC{pmcid}"
-        for drug, papers in st.session_state.retrieved_papers.items():
-            for paper in papers:
-                if paper['pmcid'] == pmcid:
-                    pdf_path = paper.get('pdf_path')
-                    paper_title = paper.get('title', f"PMC{pmcid}")
-                    break
-        
-        with st.expander(f"📖 PMC{pmcid}: {paper_title[:60]}...", expanded=False):
-            st.write(f"**PMCID:** PMC{pmcid}")
+    with st.expander("📄 **View Selected Papers** (Click to expand)", expanded=False):
+        for pmcid in st.session_state.selected_papers:
+            # Find the paper info
+            pdf_path = None
+            paper_title = f"PMC{pmcid}"
+            for drug, papers in st.session_state.retrieved_papers.items():
+                for paper in papers:
+                    if paper['pmcid'] == pmcid:
+                        pdf_path = paper.get('pdf_path')
+                        paper_title = paper.get('title', f"PMC{pmcid}")
+                        break
             
-            if pdf_path and os.path.exists(pdf_path):
-                # Download button
-                try:
-                    with open(pdf_path, "rb") as pdf_file:
-                        st.download_button(
-                            label="⬇️ Download PDF",
-                            data=pdf_file,
-                            file_name=f"PMC{pmcid}.pdf",
-                            mime="application/pdf",
-                            key=f"download_{pmcid}"
-                        )
-                except Exception as e:
-                    st.error(f"Could not read PDF: {e}")
-                
-                # Embed PDF using Streamlit's built-in st.pdf
-                try:
-                    with open(pdf_path, "rb") as f:
-                        sanitized_key = f"pdf_view_{pmcid}".replace("_", "-").replace("/", "-").replace("\\", "-")
-                        st.pdf(f, height=600, key=sanitized_key)
-                except Exception as e:
-                    st.error(f"Could not display PDF: {e}")
-                    # Fallback to text view
-                    if pmcid in st.session_state.paper_texts:
-                        text = st.session_state.paper_texts[pmcid]
-                        st.text_area(
-                            "Paper Content (Text):",
-                            value=text[:10000] + "..." if len(text) > 10000 else text,
-                            height=400,
-                            key=f"content_{pmcid}"
-                        )
-            else:
-                # Text only view
+            st.markdown(f"#### 📖 PMC{pmcid}")
+            st.markdown(f"**Title:** {paper_title}")
+            
+            tab1, tab2 = st.tabs(["📄 PDF View", "📝 Text View"])
+            
+            with tab1:
+                if pdf_path and os.path.exists(pdf_path):
+                    try:
+                        with open(pdf_path, "rb") as pdf_file:
+                            st.download_button(
+                                label="⬇️ Download PDF",
+                                data=pdf_file,
+                                file_name=f"PMC{pmcid}.pdf",
+                                mime="application/pdf",
+                                key=f"download_{pmcid}"
+                            )
+                    except Exception as e:
+                        st.error(f"Could not read PDF: {e}")
+                    
+                    try:
+                        with open(pdf_path, "rb") as f:
+                            sanitized_key = f"pdf_view_{pmcid}".replace("_", "-").replace("/", "-").replace("\\", "-")
+                            st.pdf(f, height=500, key=sanitized_key)
+                    except Exception as e:
+                        st.warning(f"PDF preview unavailable: {e}")
+                else:
+                    st.info("PDF file not available for preview.")
+            
+            with tab2:
                 if pmcid in st.session_state.paper_texts:
                     text = st.session_state.paper_texts[pmcid]
                     st.text_area(
-                        "Paper Content:",
-                        value=text[:10000] + "..." if len(text) > 10000 else text,
-                        height=400,
+                        "Extracted Text:",
+                        value=text[:8000] + "\n\n... [truncated for display]" if len(text) > 8000 else text,
+                        height=300,
                         key=f"content_{pmcid}"
                     )
                 else:
-                    st.warning("PDF and text not available for this paper.")
+                    st.warning("Text not available for this paper.")
+            
+            st.divider()
     
     # Chat interface
-    st.subheader("💬 Chat with Selected Papers")
+    st.markdown("### 💬 AI Research Assistant")
     
-    st.info(f"📚 {len(st.session_state.selected_papers)} papers selected for chat context")
-    
-    # Start Chat button - triggers initial summary
+    # Start Chat button
     if not st.session_state.chat_initialized:
-        if st.button("🚀 Start Chat (Generate Summary)", type="primary"):
+        st.markdown("""
+        <div style='background-color: #fff3cd; padding: 15px; border-radius: 8px; border: 1px solid #ffeeba; margin: 10px 0;'>
+            <strong>🚀 Ready to start!</strong> Click the button below to generate an initial summary of your selected papers 
+            and begin the conversation.
+        </div>
+        """, unsafe_allow_html=True)
+        
+        if st.button("🚀 Start Chat & Generate Summary", type="primary", use_container_width=True):
             with st.chat_message("assistant", avatar="🤖"):
                 placeholder = st.empty()
-                placeholder.markdown("**📋 Summary of Selected Papers**\n\n_Analyzing selected papers..._")
+                placeholder.markdown("**📋 Analyzing selected papers...**\n\n_Extracting key information..._")
                 summary = generate_initial_summary_streaming(st.session_state.selected_papers, placeholder)
             
-            # Add to chat history
             st.session_state.chat_history.append({
                 "role": "assistant", 
                 "content": f"**📋 Summary of Selected Papers**\n\n{summary}"
@@ -968,7 +1186,7 @@ if st.session_state.selected_papers:
             st.session_state.chat_initialized = True
             st.rerun()
     
-    # Display chat history with improved UI
+    # Display chat history
     if st.session_state.chat_history:
         st.markdown("---")
         for msg in st.session_state.chat_history:
@@ -980,30 +1198,47 @@ if st.session_state.selected_papers:
                     st.markdown(msg['content'])
         st.markdown("---")
     
-    # Only show chat input after initialization
+    # Chat input and controls
     if st.session_state.chat_initialized:
-        # Use chat_input for better UX
+        # Example questions
+        with st.expander("💡 **Example Questions** (Click for suggestions)", expanded=False):
+            st.markdown("""
+            Try asking:
+            - "What are the main findings about [drug name]'s repurposing potential?"
+            - "What mechanisms of action are discussed?"
+            - "What diseases or conditions were studied?"
+            - "What were the experimental methods used?"
+            - "Are there any clinical trials mentioned?"
+            - "What are the limitations of this research?"
+            - "Compare the findings across the selected papers"
+            """)
+        
         user_question = st.chat_input("Ask a question about the selected papers...")
         
         # Action buttons
-        col1, col2 = st.columns([1, 1])
+        col1, col2, col3 = st.columns([1, 1, 1])
         with col1:
-            clear_btn = st.button("🗑️ Clear Chat")
+            clear_btn = st.button("🗑️ Clear Chat", use_container_width=True)
         with col2:
-            end_session_btn = st.button("🔚 End Session & Cleanup", type="secondary")
+            new_summary_btn = st.button("📋 New Summary", use_container_width=True)
+        with col3:
+            end_session_btn = st.button("🔚 End Session", type="secondary", use_container_width=True)
         
         if clear_btn:
             st.session_state.chat_history = []
             st.session_state.chat_initialized = False
             st.rerun()
         
+        if new_summary_btn:
+            st.session_state.chat_history = []
+            st.session_state.chat_initialized = False
+            st.rerun()
+        
         if end_session_btn:
-            with st.spinner("Cleaning up indexed papers from vector database..."):
+            with st.spinner("🧹 Cleaning up vector database..."):
                 cleaned = cleanup_all_indexed_papers()
                 if cleaned:
-                    st.success(f"Removed {len(cleaned)} papers from vector database: {', '.join([f'PMC{p}' for p in cleaned])}")
-                else:
-                    st.info("No indexed papers to clean up.")
+                    st.success(f"✅ Removed {len(cleaned)} papers from vector database")
                 
                 st.session_state.chat_history = []
                 st.session_state.selected_papers = []
@@ -1013,22 +1248,16 @@ if st.session_state.selected_papers:
                 st.rerun()
         
         if user_question:
-            # Display user message immediately
             with st.chat_message("user", avatar="🧑"):
                 st.markdown(user_question)
             
-            # Build context from selected papers only
             selected_pmcids = st.session_state.selected_papers
             context_text = get_context_from_selected_papers(user_question, selected_pmcids)
-            
-            # Get the searched drug names
             searched_drugs = list(st.session_state.retrieved_papers.keys())
             
-            # Prepare prompt
             prompt = f"""You are a research assistant analyzing drug repurposing papers.
 
 The user searched for papers about: {', '.join(searched_drugs)}
-Focus your analysis on "{searched_drugs[0] if searched_drugs else 'the drug'}" specifically.
 
 You are discussing the following papers (PMCIDs: {', '.join([f'PMC{p}' for p in selected_pmcids])}).
 
@@ -1039,44 +1268,64 @@ Question: {user_question}
 
 Please provide a detailed, scientific answer based ONLY on the research papers provided. When discussing drug repurposing, focus specifically on how {searched_drugs[0] if searched_drugs else 'the drug'} is being repurposed (not other drugs mentioned in the paper). If the paper is about {searched_drugs[0] if searched_drugs else 'the drug'}'s mechanism or role in a disease context rather than its direct repurposing, clarify that distinction. Cite specific findings when relevant and mention which paper (by PMCID) the information comes from."""
 
-            # Call Gemini with streaming display
             with st.chat_message("assistant", avatar="🤖"):
                 placeholder = st.empty()
                 full_response = ""
                 for chunk in stream_gemini_response(prompt):
                     full_response += chunk
                     placeholder.markdown(full_response + "▌")
-                # Final update without cursor
                 placeholder.markdown(full_response)
                 answer = full_response
             
-            # Update chat history
             st.session_state.chat_history.append({"role": "user", "content": user_question})
             st.session_state.chat_history.append({"role": "assistant", "content": answer})
     else:
-        st.markdown("*Click 'Start Chat' to generate an initial summary and begin the conversation.*")
+        st.info("👆 Click **'Start Chat & Generate Summary'** above to begin your research conversation.")
 
-# ---- Sidebar: Status ----
+# ---- Sidebar: Status & Controls ----
 with st.sidebar:
-    st.header("📊 Status")
-    st.metric("Papers Indexed", sum(len(p) for p in st.session_state.retrieved_papers.values()))
-    st.metric("Total Chunks", st.session_state.total_chunks_indexed)
-    st.metric("Papers Selected", len(st.session_state.selected_papers))
-    st.metric("Chat Messages", len(st.session_state.chat_history))
-    st.metric("Chat Active", "Yes" if st.session_state.chat_initialized else "No")
+    st.markdown("## 📊 Session Dashboard")
     
-    # Show session namespace for debugging
-    st.caption(f"Session: {st.session_state.session_namespace[:8]}...")
+    st.markdown("---")
     
-    st.divider()
+    # Status metrics with better visualization
+    st.markdown("### 📈 Current Status")
     
-    if st.button("🔄 Reset All"):
-        # Cleanup Pinecone first
+    total_papers = sum(len(p) for p in st.session_state.retrieved_papers.values())
+    
+    col1, col2 = st.columns(2)
+    with col1:
+        st.metric("📄 Papers", total_papers, help="Total papers downloaded and indexed")
+    with col2:
+        st.metric("🔢 Chunks", st.session_state.total_chunks_indexed, help="Total text chunks in vector database")
+    
+    col3, col4 = st.columns(2)
+    with col3:
+        st.metric("☑️ Selected", len(st.session_state.selected_papers), help="Papers selected for chat context")
+    with col4:
+        st.metric("💬 Messages", len(st.session_state.chat_history), help="Messages in current chat")
+    
+    # Chat status indicator
+    if st.session_state.chat_initialized:
+        st.success("🟢 Chat Active")
+    else:
+        st.info("🔵 Chat Ready")
+    
+    st.markdown("---")
+    
+    # Session info
+    st.markdown("### 🔐 Session Info")
+    st.caption(f"**Session ID:** `{st.session_state.session_namespace[:12]}...`")
+    st.caption("Each session uses isolated vector storage for privacy.")
+    
+    st.markdown("---")
+    
+    # Control buttons
+    st.markdown("### ⚙️ Controls")
+    
+    if st.button("🔄 Reset Everything", use_container_width=True, help="Clear all data and start fresh"):
         cleanup_all_indexed_papers()
-        
-        # Generate new session namespace
         st.session_state.session_namespace = f"session_{uuid.uuid4().hex[:12]}"
-        
         st.session_state.retrieved_papers = {}
         st.session_state.selected_papers = []
         st.session_state.paper_texts = {}
@@ -1085,11 +1334,28 @@ with st.sidebar:
         st.session_state.chat_initialized = False
         st.rerun()
     
-    if sum(len(p) for p in st.session_state.retrieved_papers.values()) > 0:
-        if st.button("🧹 Cleanup Vector DB"):
-            with st.spinner("Removing indexed papers..."):
+    if total_papers > 0:
+        if st.button("🧹 Clear Vector DB", use_container_width=True, help="Remove indexed papers from database"):
+            with st.spinner("Cleaning..."):
                 cleaned = cleanup_all_indexed_papers()
                 st.session_state.total_chunks_indexed = 0
                 st.session_state.chat_initialized = False
                 st.success(f"Cleaned {len(cleaned)} papers")
                 st.rerun()
+    
+    st.markdown("---")
+    
+    # Help section
+    with st.expander("❓ Help & Tips"):
+        st.markdown("""
+        **Quick Tips:**
+        - 🔍 Use specific drug names
+        - 📄 Start with 1-2 papers for focused answers
+        - 💬 Ask specific questions
+        - 🧹 Clean up when done
+        
+        **Troubleshooting:**
+        - No PDFs? Try increasing search pool
+        - Slow indexing? Reduce max PDFs
+        - Poor answers? Check if papers are relevant
+        """)
