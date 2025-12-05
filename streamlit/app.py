@@ -664,7 +664,7 @@ Please provide a detailed, scientific answer based on the research papers provid
 def stream_gemini_response(prompt):
     """Stream response from Gemini model."""
     try:
-        model = genai.GenerativeModel("gemini-2.0-flash")
+        model = genai.GenerativeModel("gemini-2.5-flash")
         response = model.generate_content(prompt, stream=True)
         for chunk in response:
             if chunk.text:
