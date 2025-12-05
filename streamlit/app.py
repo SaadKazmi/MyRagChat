@@ -641,7 +641,7 @@ def generate_initial_summary(selected_pmcids):
                 paper_titles.append(f"PMC{paper['pmcid']}: {paper['title']}")
     
     # Same prompt structure as regular chat
-    prompt = f"""You are a research assistant analyzing scientific research papers related to {', '.join(searched_drugs)}.
+    prompt = f"""You are a research assistant analyzing drug repurposing papers.
 
 You are discussing the following papers (PMCIDs: {', '.join([f'PMC{p}' for p in selected_pmcids])}).
 Paper titles:
@@ -652,7 +652,7 @@ Context from selected research papers:
 
 Question: {precomputed_query}
 
-Please provide a detailed, scientific answer based ONLY on the research papers provided. When relevant, highlight findings related to {searched_drugs[0] if searched_drugs else 'the drug'} and any repurposing potential. Cite specific findings and mention which paper (by PMCID) the information comes from."""
+Please provide a detailed, scientific answer based on the research papers provided. When relevant, highlight findings related to {searched_drugs[0] if searched_drugs else 'the drug'}. Cite specific findings and mention which paper (by PMCID) the information comes from."""
 
     try:
         response = genai.GenerativeModel("gemini-2.5-flash").generate_content(prompt)
@@ -690,7 +690,10 @@ def generate_initial_summary_streaming(selected_pmcids, placeholder):
                 paper_titles.append(f"PMC{paper['pmcid']}: {paper['title']}")
     
     # Same prompt structure as regular chat
-    prompt = f"""You are a research assistant analyzing scientific research papers related to {', '.join(searched_drugs)}.
+    prompt = f"""You are a research assistant analyzing drug repurposing papers.
+
+The user searched for papers about: {', '.join(searched_drugs)}
+Focus your analysis on how "{searched_drugs[0] if searched_drugs else 'the drug'}" specifically is being repurposed or studied for new therapeutic uses.
 
 You are discussing the following papers (PMCIDs: {', '.join([f'PMC{p}' for p in selected_pmcids])}).
 Paper titles:
@@ -701,7 +704,7 @@ Context from selected research papers:
 
 Question: {precomputed_query}
 
-Please provide a detailed, scientific answer based ONLY on the research papers provided. When relevant, highlight findings related to {searched_drugs[0] if searched_drugs else 'the drug'} and any repurposing potential. Cite specific findings and mention which paper (by PMCID) the information comes from."""
+Please provide a detailed, scientific answer based ONLY on the research papers provided. Focus specifically on how {searched_drugs[0] if searched_drugs else 'the drug'} is being repurposed. If the paper discusses {searched_drugs[0] if searched_drugs else 'the drug'} in relation to other drugs or conditions, clarify that relationship. Cite specific findings when relevant and mention which paper (by PMCID) the information comes from."""
 
     # Stream the response
     full_response = ""
@@ -1252,7 +1255,9 @@ if st.session_state.selected_papers:
             context_text = get_context_from_selected_papers(user_question, selected_pmcids)
             searched_drugs = list(st.session_state.retrieved_papers.keys())
             
-            prompt = f"""You are a research assistant analyzing scientific research papers related to {', '.join(searched_drugs)}.
+            prompt = f"""You are a research assistant analyzing drug repurposing papers.
+
+The user searched for papers about: {', '.join(searched_drugs)}
 
 You are discussing the following papers (PMCIDs: {', '.join([f'PMC{p}' for p in selected_pmcids])}).
 
@@ -1261,7 +1266,8 @@ Context from selected research papers:
 
 Question: {user_question}
 
-Please provide a detailed, scientific answer based ONLY on the research papers provided. When relevant, focus on findings related to {searched_drugs[0] if searched_drugs else 'the drug'} and any repurposing potential. Cite specific findings and mention which paper (by PMCID) the information comes from."""
+Please provide a detailed, scientific answer based on the research papers provided. When discussing drug repurposing, focus specifically on how {searched_drugs[0] if searched_drugs else 'the drug'} is being repurposed (not other drugs mentioned in the paper). If the paper is about {searched_drugs[0] if searched_drugs else 'the drug'}'s mechanism or role in a disease context rather than its direct repurposing, clarify that distinction. Cite specific findings when relevant and mention which paper (by PMCID) the information comes from. If a general question relaed to the research is asked, answer based ONLY on the provided context. 
+Still analyze the research paper even if the priority drug is not the main focus"""
 
             with st.chat_message("assistant", avatar="🤖"):
                 placeholder = st.empty()
