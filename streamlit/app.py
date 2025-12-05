@@ -882,7 +882,7 @@ if search_button:
             
             st.markdown("---")
             
-            query = f"{drug_name} repurposing"
+            query = f"{drug_name} repurposing" # Search query for PubMed Central
             pmc_ids = search_pmc_articles(query, max_results=max_search)
             
             search_status.success(f"✅ **Found {len(pmc_ids)} articles**")
