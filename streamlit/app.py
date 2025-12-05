@@ -254,7 +254,7 @@ def download_pdf(pdf_url, save_path, retries=3):
 
 
 def extract_text_from_pdf(pdf_path):
-    """Extract text from PDF using PyMuPDF with OCR fallback."""
+    """Extract text from PDF using PyMuPDF."""
     try:
         doc = fitz.open(pdf_path)
         full_text = ""
@@ -263,10 +263,10 @@ def extract_text_from_pdf(pdf_path):
             page = doc.load_page(page_number)
             page_text = page.get_text()
             
-            # If page has very little text, try OCR
+            
             if len(page_text.strip()) < 100:
                 try:
-                    # Try to extract text from images using PyMuPDF's built-in OCR
+                    # Try to extract text from images using PyMuPDF's
                     page_text = page.get_text("text", flags=fitz.TEXT_PRESERVE_WHITESPACE)
                 except Exception:
                     pass
